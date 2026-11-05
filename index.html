@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>2048 Foto</title>
+<style>
+:root{
+  --bg:#14161c; --board:#232733; --cell:#2e3342; --text:#e8e6e1; --muted:#9aa0ae; --accent:#f2c14e;
+  --g:2.4%;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);
+  font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif}
+body{display:flex;justify-content:center;padding:max(14px,env(safe-area-inset-top)) 14px max(14px,env(safe-area-inset-bottom))}
+.wrap{width:min(100%,480px)}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:12px}
+h1{margin:0;font-size:clamp(28px,8vw,40px);line-height:1;letter-spacing:-.02em;color:var(--accent)}
+.skor{display:flex;gap:8px}
+.kotak{background:var(--board);border-radius:8px;padding:6px 12px;text-align:center;min-width:64px}
+.kotak small{display:block;font-size:11px;color:var(--muted)}
+.kotak b{font-size:18px}
+.aksi{display:flex;gap:8px;margin-bottom:12px}
+button{font:inherit;font-weight:700;border:0;border-radius:8px;padding:10px 16px;background:var(--accent);color:#1b1608;cursor:pointer}
+button.sekunder{background:var(--board);color:var(--text)}
+button:focus-visible{outline:3px solid #fff;outline-offset:2px}
+button:disabled{opacity:.4;cursor:default}
+#papan{position:relative;width:100%;aspect-ratio:1;background:var(--board);border-radius:12px;touch-action:none;user-select:none;-webkit-user-select:none;overflow:hidden}
+.sel,.tile{position:absolute;width:22%;height:22%;border-radius:8px}
+.sel{background:var(--cell)}
+.tile{overflow:hidden;transition:left .12s ease-out,top .12s ease-out;background:#3c3a32;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+.tile img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;-webkit-user-drag:none}
+.tile .num{position:absolute;top:4px;right:7px;color:#fff;font-weight:800;font-size:clamp(12px,3.8vw,20px);line-height:1;
+  text-shadow:0 1px 2px rgba(0,0,0,.95),0 0 6px rgba(0,0,0,.8),0 0 12px rgba(0,0,0,.6)}
+.tile .besar{display:none;position:absolute;inset:0;align-items:center;justify-content:center;font-weight:800;font-size:clamp(20px,8vw,44px);color:#fff;text-shadow:0 2px 4px rgba(0,0,0,.5)}
+.tile.nofoto .besar{display:flex}
+.tile.nofoto .num{display:none}
+.tile.baru{animation:muncul .16s ease-out}
+.tile.gabung{animation:letup .16s ease-out}
+@keyframes muncul{from{transform:scale(.3);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes letup{0%{transform:scale(1)}50%{transform:scale(1.14)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){.tile{transition:none}.tile.baru,.tile.gabung{animation:none}}
+#tutup{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(20,22,28,.82);text-align:center;z-index:5}
+#tutup.tampil{display:flex}
+#tutup h2{margin:0;font-size:clamp(26px,8vw,38px)}
+#tutup .btns{display:flex;gap:8px}
+.info{margin:12px 2px 0;color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>2048 Foto</h1>
+    <div class="skor">
+      <div class="kotak"><small>Skor</small><b id="skor">0</b></div>
+      <div class="kotak"><small>Terbaik</small><b id="terbaik">0</b></div>
+    </div>
+  </header>
+  <div class="aksi">
+    <button id="btnUlang">Ulang</button>
+    <button id="btnUndo" class="sekunder">Undo</button>
+  </div>
+  <div id="papan">
+    <div id="tutup"><h2 id="tutupJudul"></h2><div class="btns"><button id="btnLanjut" class="sekunder">Lanjut main</button><button id="btnMain">Main lagi</button></div></div>
+  </div>
+  <p class="info">Geser layar atau tekan tombol panah untuk menggabungkan foto yang sama.</p>
+</div>
+
+<script>
+/* ============================================================
+   PENGATURAN FOTO (hanya bagian ini yang perlu kamu ubah)
+   Taruh 11 foto di folder "foto" lalu sesuaikan nama/ekstensinya.
+   ============================================================ */
+const FOTO = {
+  2:    "foto/2.jpg",
+  4:    "foto/4.jpg",
+  8:    "foto/8.jpg",
+  16:   "foto/16.jpg",
+  32:   "foto/32.jpg",
+  64:   "foto/64.jpg",
+  128:  "foto/128.jpg",
+  256:  "foto/256.jpg",
+  512:  "foto/512.jpg",
+  1024: "foto/1024.jpg",
+  2048: "foto/2048.jpg"
+};
+/* Warna cadangan kalau foto belum ada / gagal dimuat */
+const WARNA = {2:"#4a6fa5",4:"#3f8f8b",8:"#6a9b4b",16:"#b5a642",32:"#c98a3c",64:"#c2623a",128:"#b84a5c",256:"#8d4fa0",512:"#5f56b5",1024:"#3a7fb5",2048:"#f2c14e"};
+/* ============================================================ */
+
+const N = 4, G = 2.4, S = (100 - 5 * G) / 4;
+const papan = document.getElementById("papan");
+const elSkor = document.getElementById("skor"), elTerbaik = document.getElementById("terbaik");
+const tutup = document.getElementById("tutup"), tutupJudul = document.getElementById("tutupJudul");
+const btnUndo = document.getElementById("btnUndo");
+
+let tiles = [], els = new Map(), nextId = 1, skor = 0, terbaik = 0, undoState = null, sudahMenang = false, selesai = false;
+
+try { terbaik = parseInt(localStorage.getItem("terbaik2048foto")) || 0; } catch (e) {}
+elTerbaik.textContent = terbaik;
+
+for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+  const s = document.createElement("div"); s.className = "sel";
+  s.style.left = pos(c) + "%"; s.style.top = pos(r) + "%"; papan.appendChild(s);
+}
+function pos(i) { return G + i * (S + G); }
+
+function isiTile(el, v) {
+  el.innerHTML = ""; el.dataset.v = v; el.classList.remove("nofoto"); el.style.background = "";
+  const src = FOTO[v];
+  const fallback = () => { el.classList.add("nofoto"); el.style.background = WARNA[v] || "#3c3a32"; };
+  if (src) {
+    const img = new Image(); img.alt = ""; img.draggable = false;
+    img.onerror = () => { img.remove(); fallback(); };
+    img.src = src; el.appendChild(img);
+  } else fallback();
+  const n = document.createElement("span"); n.className = "num"; n.textContent = v; el.appendChild(n);
+  const b = document.createElement("span"); b.className = "besar"; b.textContent = v; el.appendChild(b);
+}
+
+function render() {
+  tiles.forEach(t => {
+    let el = els.get(t.id);
+    if (!el) {
+      el = document.createElement("div"); el.className = "tile"; isiTile(el, t.v);
+      els.set(t.id, el); papan.appendChild(el);
+      if (t.baru) el.classList.add("baru");
+    }
+    if (+el.dataset.v !== t.v) { isiTile(el, t.v); }
+    if (t.gabung) { el.classList.remove("gabung"); void el.offsetWidth; el.classList.add("gabung"); }
+    el.style.left = pos(t.c) + "%"; el.style.top = pos(t.r) + "%";
+    t.baru = false; t.gabung = false;
+  });
+  elSkor.textContent = skor;
+  btnUndo.disabled = !undoState;
+}
+
+function kosong() {
+  const used = new Set(tiles.map(t => t.r * N + t.c)), out = [];
+  for (let i = 0; i < N * N; i++) if (!used.has(i)) out.push(i);
+  return out;
+}
+function tambah() {
+  const k = kosong(); if (!k.length) return;
+  const i = k[Math.floor(Math.random() * k.length)];
+  tiles.push({ id: nextId++, v: Math.random() < 0.9 ? 2 : 4, r: Math.floor(i / N), c: i % N, baru: true });
+}
+
+function snapshot() { return { tiles: tiles.map(t => ({ id: t.id, v: t.v, r: t.r, c: t.c })), skor, nextId }; }
+
+function bisaGerak() {
+  if (kosong().length) return true;
+  const g = Array.from({ length: N }, () => Array(N).fill(0));
+  tiles.forEach(t => g[t.r][t.c] = t.v);
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    if (c + 1 < N && g[r][c] === g[r][c + 1]) return true;
+    if (r + 1 < N && g[r][c] === g[r + 1][c]) return true;
+  }
+  return false;
+}
+
+/* arah: 0 kiri, 1 atas, 2 kanan, 3 bawah */
+function gerak(arah) {
+  if (selesai) return;
+  const sebelum = snapshot();
+  const grid = Array.from({ length: N }, () => Array(N).fill(null));
+  tiles.forEach(t => grid[t.r][t.c] = t);
+  let bergerak = false, dapat = 0;
+  for (let i = 0; i < N; i++) {
+    const koor = [];
+    for (let j = 0; j < N; j++) koor.push(arah === 0 ? [i, j] : arah === 2 ? [i, N - 1 - j] : arah === 1 ? [j, i] : [N - 1 - j, i]);
+    const baris = koor.map(([r, c]) => grid[r][c]).filter(Boolean);
+    let idx = 0;
+    for (let n = 0; n < baris.length; n++) {
+      const t = baris[n], nx = baris[n + 1], [r, c] = koor[idx];
+      if (nx && nx.v === t.v) {
+        t.r = r; t.c = c; nx.r = r; nx.c = c; nx.mati = true;
+        t.v *= 2; t.gabung = true; dapat += t.v; bergerak = true; n++;
+      } else {
+        if (t.r !== r || t.c !== c) bergerak = true;
+        t.r = r; t.c = c;
+      }
+      idx++;
+    }
+  }
+  if (!bergerak) return;
+  undoState = sebelum;
+  skor += dapat;
+  if (skor > terbaik) {
+    terbaik = skor; elTerbaik.textContent = terbaik;
+    try { localStorage.setItem("terbaik2048foto", terbaik); } catch (e) {}
+  }
+  const mati = tiles.filter(t => t.mati);
+  tiles = tiles.filter(t => !t.mati);
+  tambah();
+  render();
+  setTimeout(() => mati.forEach(t => { const el = els.get(t.id); if (el) el.remove(); els.delete(t.id); }), 130);
+  if (!sudahMenang && tiles.some(t => t.v === 2048)) {
+    sudahMenang = true; tampilkan("Kamu menang!", true);
+  } else if (!bisaGerak()) {
+    selesai = true; tampilkan("Game selesai", false);
+  }
+}
+
+function tampilkan(judul, bolehLanjut) {
+  tutupJudul.textContent = judul;
+  document.getElementById("btnLanjut").style.display = bolehLanjut ? "" : "none";
+  tutup.classList.add("tampil");
+}
+
+function bersihkan() { els.forEach(el => el.remove()); els.clear(); tiles = []; }
+
+function mulai() {
+  bersihkan(); skor = 0; undoState = null; sudahMenang = false; selesai = false; nextId = 1;
+  tutup.classList.remove("tampil");
+  tambah(); tambah(); render();
+}
+
+function undo() {
+  if (!undoState) return;
+  bersihkan();
+  tiles = undoState.tiles.map(t => ({ ...t })); skor = undoState.skor; nextId = undoState.nextId;
+  undoState = null; selesai = false; tutup.classList.remove("tampil");
+  render();
+}
+
+document.getElementById("btnUlang").onclick = mulai;
+document.getElementById("btnMain").onclick = mulai;
+document.getElementById("btnLanjut").onclick = () => tutup.classList.remove("tampil");
+btnUndo.onclick = undo;
+
+document.addEventListener("keydown", e => {
+  const peta = { ArrowLeft: 0, ArrowUp: 1, ArrowRight: 2, ArrowDown: 3, a: 0, w: 1, d: 2, s: 3 };
+  const k = peta[e.key]; if (k === undefined) return;
+  e.preventDefault(); gerak(k);
+});
+
+let sx = 0, sy = 0;
+papan.addEventListener("touchstart", e => { const t = e.touches[0]; sx = t.clientX; sy = t.clientY; }, { passive: true });
+papan.addEventListener("touchend", e => {
+  const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+  gerak(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 2 : 0) : (dy > 0 ? 3 : 1));
+}, { passive: true });
+papan.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
+
+mulai();
+</script>
+</body>
+</html>
